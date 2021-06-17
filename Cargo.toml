@@ -1,0 +1,11 @@
+[package]
+name = "prob-num"
+version = "0.1.0"
+authors = ["raimundo saona <rasa200@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+num-traits = "0.2.14"
+test-case = "1.1.0"
+serde = { version = "1.0", features = ["derive"] } 
+approx = "0.5.0"
