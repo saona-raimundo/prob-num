@@ -3,9 +3,9 @@
 ## Trait implementation (derivation)
 
 - [ ] Check that we have as many implementations as 
+  - [x] Closed01
   - [ ] Complex
   - [ ] Ratio
-  - [ ] Closed01
 
 ### Num_traits
 

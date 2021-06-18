@@ -1,6 +1,7 @@
 use approx::{AbsDiffEq, RelativeEq, UlpsEq};
 use core::{
     fmt::{Debug, Display},
+    iter::Sum,
     ops::{
         Add, AddAssign, BitAnd, BitAndAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub,
         SubAssign,
@@ -20,7 +21,11 @@ use num_traits::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Wrapper over a probability value, ie. a number in the range [0, 1] including both endpoints.
+mod error;
+
+pub use error::Bound;
+
+/// Wrapper over a probability value, ie a number in the range [0, 1] including both endpoints.
 #[derive(
     Copy, Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
 )]
@@ -37,7 +42,7 @@ where
     /// # Panics
     ///
     /// If the input is not in the interval [0, 1].
-    #[inline(always)]
+    #[inline]
     pub fn new(p: T) -> Self {
         assert!(!(p < T::zero()) && !(p > T::one()));
         P(p)
@@ -48,7 +53,7 @@ where
     /// # Panics
     ///
     /// In debug mode, if the input is not in the interval [0, 1].
-    #[inline(always)]
+    #[inline]
     pub fn new_debug_checked(p: T) -> Self {
         debug_assert!(!(p < T::zero()) && !(p > T::one()));
         P(p)
@@ -59,40 +64,25 @@ where
     /// # Remarks
     ///
     /// There is no checking of the input.
-    #[inline(always)]
+    #[inline]
     pub fn new_unchecked(p: T) -> Self {
         P(p)
     }
 
-    /// Performs the conversion.
-    ///
-    /// # Remarks
-    ///
-    /// It replace the implementation of the trait `TryFrom`.
-    pub fn try_new(p: T) -> Result<Self, &'static str> {
-        if p < T::zero() {
-            Err("P only accepts value superior or equal to zero!")
-        } else if p > T::one() {
-            Err("P only accepts value inferior or equal to one!")
-        } else {
-            Ok(P::new_unchecked(p))
-        }
-    }
-
     /// Returns the value stored.
-    #[inline(always)]
+    #[inline]
     pub fn get(&self) -> &T {
         &self.0
     }
 
     /// Returns the value stored.
-    #[inline(always)]
+    #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.0
     }
 
     /// Returns the value stored.
-    #[inline(always)]
+    #[inline]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -170,6 +160,57 @@ where
         F: FnMut(&mut T),
     {
         f(self.get_mut());
+    }
+}
+
+impl<T> P<T>
+where
+    T: PartialOrd + Zero + One + Debug,
+{
+    /// Performs the conversion.
+    ///
+    /// # Remarks
+    ///
+    /// It replaces the implementation of the trait `TryFrom`.
+    #[inline]
+    pub fn try_new(p: T) -> Result<Self, Bound<T>> {
+        if p < T::zero() {
+            Err(Bound::Lower(p))
+        } else if p > T::one() {
+            Err(Bound::Upper(p))
+        } else {
+            Ok(P::new_unchecked(p))
+        }
+    }
+}
+
+impl<T> P<T>
+where
+    T: PartialOrd + Zero + One + Sub<Output = T>,
+{
+    /// Returns the absolute distance between the two probabilities.
+    #[inline]
+    pub fn distance(self, other: Self) -> Self {
+        if self > other {
+            P::new_unchecked(self.into_inner() - other.into_inner())
+        } else {
+            P::new_unchecked(other.into_inner() - self.into_inner())
+        }
+    }
+}
+
+impl<T> P<T>
+where
+    T: PartialOrd + Zero + One + Sub<Output = T> + Clone,
+{
+    /// Returns the arithmetic average of two values.
+    #[inline]
+    pub fn average(self, other: Self) -> Self {
+        if self > other {
+            other.clone() + P::new_unchecked(self.into_inner() - other.into_inner())
+        } else {
+            self.clone() + P::new_unchecked(other.into_inner() - self.into_inner())
+        }
     }
 }
 
@@ -562,6 +603,30 @@ where
     }
 }
 
+impl<T> Sum for P<T>
+where
+    T: PartialOrd + Zero + One,
+{
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        iter.fold(P::<T>::zero(), |a, b| a + b)
+    }
+}
+
+impl<'a, T> Sum<&'a P<T>> for P<T>
+where
+    T: PartialOrd + Zero + One + Clone,
+{
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        iter.fold(P::<T>::zero(), |a, b| a + b.clone())
+    }
+}
+
 impl<T> ToPrimitive for P<T>
 where
     T: PartialOrd + Zero + One + ToPrimitive,
@@ -604,12 +669,6 @@ where
 mod tests {
     use super::*;
     use test_case::test_case;
-    #[test]
-    fn it_works() {
-        let p = P::new(1);
-        let inner: usize = *p.get();
-        assert_eq!(inner, 1);
-    }
 
     #[test]
     fn add_assign() {
@@ -617,6 +676,13 @@ mod tests {
         let p = P::new(1);
         q += p.clone();
         assert_eq!(q, p);
+    }
+
+    #[test]
+    fn distance() {
+        let p = P::new(1);
+        let q = P::new(0);
+        assert_eq!(p.distance(q), P::new(1));
     }
 
     #[test_case(0,  |x| *x = 1, 1 ; "transforming zero to one")]
@@ -652,5 +718,26 @@ mod tests {
         let mut p = P::new(p);
         p.mul_add_assign(P::new(a), P::new(b));
         assert_eq!(P::new(q), p);
+    }
+
+    #[test]
+    fn new() {
+        let p = P::new(1);
+        let inner: usize = *p.get();
+        assert_eq!(inner, 1);
+    }
+
+    #[test]
+    fn serialize() {
+        let p = P::new(1);
+        let s = ron::ser::to_string(&p).unwrap();
+        assert_eq!("(1)".to_string(), s);
+    }
+
+    #[test]
+    fn sum() {
+        let probabilities = [P::new(0.3), P::new(0.4)];
+        let sum = probabilities.iter().cloned().sum();
+        assert_eq!(P::new(0.7), sum);
     }
 }
