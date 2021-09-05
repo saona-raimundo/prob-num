@@ -25,11 +25,14 @@ mod error;
 
 pub use error::Bound;
 
+/// Shorthand for `Probability`.
+pub type P<T> = Probability<T>;
+
 /// Wrapper over a probability value, ie a number in the range [0, 1] including both endpoints.
 #[derive(
     Copy, Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
 )]
-pub struct P<T>(T)
+pub struct Probability<T>(T)
 where
     T: PartialOrd + Zero + One;
 
@@ -45,7 +48,7 @@ where
     #[inline]
     pub fn new(p: T) -> Self {
         assert!(!(p < T::zero()) && !(p > T::one()));
-        P(p)
+        Probability(p)
     }
 
     /// Constructs a new `P<T>`.
@@ -56,7 +59,7 @@ where
     #[inline]
     pub fn new_debug_checked(p: T) -> Self {
         debug_assert!(!(p < T::zero()) && !(p > T::one()));
-        P(p)
+        Probability(p)
     }
 
     /// Constructs a new `P<T>`.
@@ -66,7 +69,7 @@ where
     /// There is no checking of the input.
     #[inline]
     pub fn new_unchecked(p: T) -> Self {
-        P(p)
+        Probability(p)
     }
 
     /// Returns the value stored.

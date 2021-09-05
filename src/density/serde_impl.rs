@@ -1,4 +1,4 @@
-use crate::{D, P};
+use crate::{Density, D, P};
 use core::fmt::Debug;
 use num_traits::identities::{One, Zero};
 use serde::{
@@ -62,7 +62,7 @@ where
     {
         let probabilities: [P<T>; N] =
             de.deserialize_tuple(N, ArrayVisitor::<T, N>(PhantomData))?;
-        Ok(D(probabilities))
+        Ok(Density(probabilities))
     }
 }
 

@@ -6,18 +6,26 @@ mod error;
 mod iter;
 mod serde_impl;
 
+pub use error::{Bound, TotalMass};
 pub use iter::IntoIter;
 
-pub use error::{Bound, TotalMass};
-/// [Probability mass function], ie a collection of numbers in [0, 1] that sum up to 1.
+/// Shorthand for `Density`.
+pub type D<T, const N: usize> = Density<T, N>;
+
+/// [Probability mass function] or density, ie a collection of numbers in [0, 1] that sum up to 1.
+///
+/// # Remarks
+///
+/// The elements sum exactly one. Therefore, using floating point is rather limited.
+/// For an approximate version, see `Weights`.
 ///
 /// [Probability mass function]: https://en.wikipedia.org/wiki/Probability_mass_function
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct D<T, const N: usize>(pub(crate) [P<T>; N])
+pub struct Density<T, const N: usize>(pub(crate) [P<T>; N])
 where
     T: PartialOrd + Zero + One;
 
-impl<T, const N: usize> D<T, N>
+impl<T, const N: usize> Density<T, N>
 where
     T: PartialOrd + Zero + One,
 {
@@ -34,11 +42,11 @@ where
     }
 }
 
-impl<T, const N: usize> D<T, N>
+impl<T, const N: usize> Density<T, N>
 where
     T: PartialOrd + Zero + One + Copy,
 {
-    /// Constructs a new `D<T, N>`.
+    /// Constructs a new `Density<T, N>`.
     ///
     /// # Remarks
     ///
@@ -49,15 +57,15 @@ where
         for (i, p) in probabilities.iter().enumerate() {
             vector[i] = P::new_unchecked(*p);
         }
-        D(vector)
+        Density(vector)
     }
 }
 
-impl<T, const N: usize> D<T, N>
+impl<T, const N: usize> Density<T, N>
 where
     T: PartialOrd + Zero + One + Copy + Debug + Sum,
 {
-    /// Constructs a new `D<T, N>`.
+    /// Constructs a new `Density<T, N>`.
     ///
     /// # Panics
     ///
@@ -72,10 +80,10 @@ where
             vector[i] = P::new(*p);
         }
 
-        D(vector)
+        Density(vector)
     }
 
-    /// Constructs a new `D<T, N>`.
+    /// Constructs a new `Density<T, N>`.
     ///
     /// # Panics
     ///
@@ -89,19 +97,40 @@ where
         for (i, p) in probabilities.iter().enumerate() {
             vector[i] = P::new_debug_checked(*p);
         }
-        D(vector)
+        Density(vector)
     }
 }
 
-impl<T, const N: usize> D<T, N>
+impl<T: 'static, const N: usize> TryFrom<[T; N]> for Density<T, N>
+where
+    T: PartialOrd + Zero + One + Copy + Debug + Sum<T>,
+{
+    type Error = Bound<T>;
+    fn try_from(probabilities: [T; N]) -> Result<Self, Self::Error> {
+        if N == 0 {
+            return Err(Bound::Empty);
+        }
+        let sum = probabilities.iter().cloned().sum();
+        if sum > T::one() {
+            Err(TotalMass::TooMuch(sum))?;
+        }
+        if sum < T::one() {
+            Err(TotalMass::TooLittle(sum))?;
+        }
+        let mut vector = [P::new_unchecked(T::zero()); N];
+        for (i, p) in probabilities.iter().enumerate() {
+            vector[i] = P::try_new(*p)?;
+        }
+
+        Ok(Density(vector))
+    }
+}
+
+impl<T, const N: usize> Density<T, N>
 where
     T: PartialOrd + Zero + One + Copy + Debug + Sum<T>,
 {
     /// Performs the conversion.
-    ///
-    /// # Remarks
-    ///
-    /// It replaces the implementation of the trait `TryFrom`.
     #[inline]
     pub fn try_new(probabilities: [T; N]) -> Result<Self, Bound<T>> {
         if N == 0 {
@@ -119,11 +148,11 @@ where
             vector[i] = P::try_new(*p)?;
         }
 
-        Ok(D(vector))
+        Ok(Density(vector))
     }
 }
 
-impl<T, const N: usize> AsRef<[P<T>]> for D<T, N>
+impl<T, const N: usize> AsRef<[P<T>]> for Density<T, N>
 where
     T: PartialOrd + Zero + One + Copy,
 {
@@ -133,7 +162,7 @@ where
     }
 }
 
-impl<T, const N: usize> Default for D<T, N>
+impl<T, const N: usize> Default for Density<T, N>
 where
     T: PartialOrd + Zero + One + Copy,
 {
@@ -146,11 +175,11 @@ where
         assert!(N > 0);
         let mut probabilities = [T::zero(); N];
         probabilities[0] = T::one();
-        D::new_unchecked(probabilities)
+        Density::new_unchecked(probabilities)
     }
 }
 
-impl<T, const N: usize> Index<usize> for D<T, N>
+impl<T, const N: usize> Index<usize> for Density<T, N>
 where
     T: PartialOrd + Zero + One,
 {
@@ -162,7 +191,7 @@ where
     }
 }
 
-impl<T, const N: usize> IntoIterator for D<T, N>
+impl<T, const N: usize> IntoIterator for Density<T, N>
 where
     T: PartialOrd + Zero + One + Clone,
 {
@@ -174,7 +203,7 @@ where
     }
 }
 
-impl<T: 'static, const N: usize> TryFrom<[P<T>; N]> for D<T, N>
+impl<T: 'static, const N: usize> TryFrom<[P<T>; N]> for Density<T, N>
 where
     T: PartialOrd + Zero + One + Debug + Clone + Sum,
 {
@@ -190,7 +219,7 @@ where
             Err(TotalMass::TooLittle(sum))?;
         }
 
-        Ok(D(probabilities))
+        Ok(Density(probabilities))
     }
 }
 
@@ -202,8 +231,8 @@ mod tests {
 
     #[test]
     fn default() {
-        let d = D::default();
-        assert_eq!(d, D::new_unchecked([1, 0, 0]));
+        let d = Density::default();
+        assert_eq!(d, Density::new_unchecked([1, 0, 0]));
     }
 
     #[test_case([0.5, 0.5], "(((0.5),(0.5)))"; "half half")]
@@ -213,7 +242,7 @@ mod tests {
     where
         T: PartialOrd + Zero + One + Copy + Debug + serde::Deserialize<'de>,
     {
-        let d: D<T, N> = D::new_unchecked(probabilities);
+        let d: Density<T, N> = Density::new_unchecked(probabilities);
         let d2 = ron::de::from_str(s).unwrap();
         println!("{:?}", s);
         assert_eq!(d, d2);
@@ -221,9 +250,22 @@ mod tests {
 
     #[test]
     fn index() {
-        let d = D::new([0.2, 0.8]);
+        let d = Density::new([0.2, 0.8]);
         assert_eq!(P::new(0.2), d[0]);
         assert_eq!(P::new(0.8), d[1]);
+    }
+
+    #[test_case([1./9., 8./9.]; "2 elements")]
+    #[test_case([0.4, 0.4, 0.2]; "3 elements")]
+    #[test_case([1./3.; 3]; "thirds")]
+    #[test_case([1./5.; 5]; "5 elements")]
+    #[test_case([1./6.; 6] => panics; "6 elements")]
+    #[test_case([0.1_f64; 10] => panics; "10 elements")]
+    fn new<T, const N: usize>(probabilities: [T; N])
+    where
+        T: PartialOrd + Zero + One + Copy + Debug + Sum,
+    {
+        D::new(probabilities);
     }
 
     #[test_case([0.5, 0.5], "(((0.5),(0.5)))"; "half half")]
@@ -233,18 +275,18 @@ mod tests {
     where
         T: PartialOrd + Zero + One + Copy + Debug + serde::Serialize,
     {
-        let d = D::new_unchecked(probabilities);
+        let d = Density::new_unchecked(probabilities);
         let s = ron::ser::to_string(&d).unwrap();
         assert_eq!(s, expected);
     }
 
     #[test_case([0, -1, 1, 1] => Err(Bound::Element { source: crate::probability::Bound::Lower(-1) }) ; "wrong single probability")]
     #[test_case([0, 1, 1] => Err(Bound::TotalMass { source: TotalMass::TooMuch(2) }) ; "wrong total mass probability")]
-    #[test_case([0.5, 0.5] => Ok(D::new_unchecked([0.5, 0.5])) ; "half half")]
-    fn try_new<T, const N: usize>(probabilities: [T; N]) -> Result<D<T, N>, Bound<T>>
+    #[test_case([0.5, 0.5] => Ok(Density::new_unchecked([0.5, 0.5])) ; "half half")]
+    fn try_new<T, const N: usize>(probabilities: [T; N]) -> Result<Density<T, N>, Bound<T>>
     where
         T: PartialOrd + Zero + One + Copy + Debug + Sum<T> + 'static,
     {
-        D::try_new(probabilities)
+        Density::try_new(probabilities)
     }
 }
